@@ -331,7 +331,7 @@ $tmpInput = @'
 {"description":"","translateDescription":false,"inputFieldType":1,"key":"inputName","type":0,"options":1}
 '@ 
 $dataSourceGuid_0 = [PSCustomObject]@{} 
-Invoke-HelloIDDatasource -DatasourceName "NTFS-projectfolder-create-check-names" -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript -$tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_0) 
+Invoke-HelloIDDatasource -DatasourceName "NTFS-projectfolder-create-check-names" -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_0) 
 <# End: DataSource "NTFS-projectfolder-create-check-names" #>
 <# End: HelloID Data sources #>
 
