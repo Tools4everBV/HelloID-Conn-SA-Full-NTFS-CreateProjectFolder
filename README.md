@@ -40,7 +40,7 @@ After the all-in-one PowerShell script has run and created all the required reso
 ## Manual resources
 This Delegated Form uses the following resources in order to run
 
-### Powershell data source 'NTFS-projectfolder-create-check-name'
+### Powershell data source 'NTFS-projectfolder-create-check-names'
 This Powershell data source runs an Active Directory query and checks the filesystem for duplicate folder and security group name. The available names based on the configured naming convention are returned
 
 ### Delegated form task 'NTFS-projectfolder-create'
