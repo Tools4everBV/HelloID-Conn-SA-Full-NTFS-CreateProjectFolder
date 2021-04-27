@@ -45,3 +45,6 @@ This Powershell data source runs an Active Directory query and checks the filesy
 
 ### Delegated form task 'NTFS-projectfolder-create'
 This delegated form task will create the project folder, Active Directory security group and set the access rights.
+
+# HelloID Docs
+The official HelloID documentation can be found at: https://docs.helloid.com/
