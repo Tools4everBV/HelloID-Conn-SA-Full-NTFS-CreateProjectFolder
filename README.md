@@ -1,14 +1,16 @@
-# HelloID-Conn-SA-Full-NTFS-CreateProjectFolder
-HelloID Service Automation Delegated Form for NTFS project folder creation including Active Directory security group and access rights
-
-
 <!-- Description -->
 ## Description
 This HelloID Service Automation Delegated Form provides NTFS project folder creation including Active Directory security group and access rights functionality. The following options are available:
  1. Enter project folder name
  2. Select available folder name and security group based on naming convention and lookup in Active Directory and the filesystem
  3. After confirmation the project folder is created, the Active Directory security group is created and the access rights are st
- 
+
+## Versioning
+| Version | Description | Date |
+| - | - | - |
+| 1.0.1   | Added version number and updated all-in-one script | 2021/12/13  |
+| 1.0.0   | Initial release | 2020/09/07  |
+
 <!-- TABLE OF CONTENTS -->
 ## Table of Contents
 * [Description](#description)
@@ -46,5 +48,8 @@ This Powershell data source runs an Active Directory query and checks the filesy
 ### Delegated form task 'NTFS-projectfolder-create'
 This delegated form task will create the project folder, Active Directory security group and set the access rights.
 
-# HelloID Docs
+## Getting help
+_If you need help, feel free to ask questions on our [forum](https://forum.helloid.com/forum/helloid-connectors/service-automation/643-helloid-sa-ntfs-create-project-folder)_
+
+## HelloID Docs
 The official HelloID documentation can be found at: https://docs.helloid.com/
