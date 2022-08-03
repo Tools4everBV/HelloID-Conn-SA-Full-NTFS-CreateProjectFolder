@@ -7,7 +7,7 @@ $portalUrl = "https://CUSTOMER.helloid.com"
 $apiKey = "API_KEY"
 $apiSecret = "API_SECRET"
 $delegatedFormAccessGroupNames = @("Users") #Only unique names are supported. Groups must exist!
-$delegatedFormCategories = @("Fileserver") #Only unique names are supported. Categories will be created if not exists
+$delegatedFormCategories = @("FileSystem") #Only unique names are supported. Categories will be created if not exists
 $script:debugLogging = $false #Default value: $false. If $true, the HelloID resource GUIDs will be shown in the logging
 $script:duplicateForm = $false #Default value: $false. If $true, the HelloID resource names will be changed to import a duplicate Form
 $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID resource names to generate a duplicate form with different resource names
@@ -15,6 +15,33 @@ $script:duplicateFormSuffix = "_tmp" #the suffix will be added to all HelloID re
 #The following HelloID Global variables are used by this form. No existing HelloID global variables will be overriden only new ones are created.
 #NOTE: You can also update the HelloID Global variable values afterwards in the HelloID Admin Portal: https://<CUSTOMER>.helloid.com/admin/variablelibrary
 $globalHelloIDVariables = [System.Collections.Generic.List[object]]@();
+
+#Global variable #1 >> ProjectFolderCreateOU
+$tmpName = @'
+ProjectFolderCreateOU
+'@ 
+$tmpValue = @'
+OU=Groups,OU=Company,DC=local
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
+
+#Global variable #2 >> ProjectFolderPrefix
+$tmpName = @'
+ProjectFolderPrefix
+'@ 
+$tmpValue = @'
+PROJ_
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
+
+#Global variable #3 >> ProjectFolderRootPath
+$tmpName = @'
+ProjectFolderRootPath
+'@ 
+$tmpValue = @'
+\\fileserver\share$\folders
+'@ 
+$globalHelloIDVariables.Add([PSCustomObject]@{name = $tmpName; value = $tmpValue; secret = "False"});
 
 
 #make sure write-information logging is visual
@@ -79,7 +106,7 @@ function Invoke-HelloIDGlobalVariable {
                 secret   = $Secret;
                 ItemType = 0;
             }    
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl + "api/v1/automation/variable")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -125,7 +152,7 @@ function Invoke-HelloIDAutomationTask {
                 objectGuid          = $ObjectGuid;
                 variables           = (ConvertFrom-Json-WithEmptyArray($Variables));
             }
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl +"api/v1/automationtasks/powershell")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -180,7 +207,7 @@ function Invoke-HelloIDDatasource {
                 script             = $DatasourcePsScript;
                 input              = (ConvertFrom-Json-WithEmptyArray($DatasourceInput));
             }
-            $body = ConvertTo-Json -InputObject $body
+            $body = ConvertTo-Json -InputObject $body -Depth 100
       
             $uri = ($script:PortalBaseUrl +"api/v1/datasource")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -245,10 +272,11 @@ function Invoke-HelloIDDelegatedForm {
     param(
         [parameter(Mandatory)][String]$DelegatedFormName,
         [parameter(Mandatory)][String]$DynamicFormGuid,
-        [parameter()][String][AllowEmptyString()]$AccessGroups,
+        [parameter()][Array][AllowEmptyString()]$AccessGroups,
         [parameter()][String][AllowEmptyString()]$Categories,
         [parameter(Mandatory)][String]$UseFaIcon,
         [parameter()][String][AllowEmptyString()]$FaIcon,
+        [parameter()][String][AllowEmptyString()]$task,
         [parameter(Mandatory)][Ref]$returnObject
     )
     $delegatedFormCreated = $false
@@ -268,11 +296,16 @@ function Invoke-HelloIDDelegatedForm {
                 name            = $DelegatedFormName;
                 dynamicFormGUID = $DynamicFormGuid;
                 isEnabled       = "True";
-                accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
                 useFaIcon       = $UseFaIcon;
                 faIcon          = $FaIcon;
-            }    
-            $body = ConvertTo-Json -InputObject $body
+                task            = ConvertFrom-Json -inputObject $task;
+            }
+            if(-not[String]::IsNullOrEmpty($AccessGroups)) { 
+                $body += @{
+                    accessGroups    = (ConvertFrom-Json-WithEmptyArray($AccessGroups));
+                }
+            }
+            $body = ConvertTo-Json -InputObject $body -Depth 100
     
             $uri = ($script:PortalBaseUrl +"api/v1/delegatedforms")
             $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -297,6 +330,8 @@ function Invoke-HelloIDDelegatedForm {
     $returnObject.value.guid = $delegatedFormGuid
     $returnObject.value.created = $delegatedFormCreated
 }
+
+
 <# Begin: HelloID Global Variables #>
 foreach ($item in $globalHelloIDVariables) {
 	Invoke-HelloIDGlobalVariable -Name $item.name -Value $item.value -Secret $item.secret 
@@ -305,13 +340,77 @@ foreach ($item in $globalHelloIDVariables) {
 
 
 <# Begin: HelloID Data sources #>
-<# Begin: DataSource "" #>
-<# End: DataSource "" #>
+<# Begin: DataSource "NTFS-projectfolder-create-check-names" #>
+$tmpPsScript = @'
+try {
+    $iterationMax = 10
+    $groupName = $datasource.inputName
+    $groupDescription = $description
+     
+    function Remove-StringLatinCharacters
+    {
+        PARAM ([string]$String)
+        [Text.Encoding]::ASCII.GetString([Text.Encoding]::GetEncoding("Cyrillic").GetBytes($String))
+    }
+     
+    $groupName = Remove-StringLatinCharacters $groupName
+    $groupName = $groupName.trim() -replace '\s+', ' '
+     
+     
+    for($i = 0; $i -lt $iterationMax; $i++) {   
+        if($i -eq 0) {
+            $returnGroupName = $groupName
+        } else {
+            $returnGroupName = $groupName + "_$i"
+        }
+     
+        $fullpath = $ProjectFolderRootPath + "\" + $returnGroupName
+        $returnGroupName = $ProjectFolderPrefix + $returnGroupName
+        $found = Get-ADGroup -Filter {Name -eq $returnGroupName}
+     
+        if(@($found).count -eq 0) {
+            Write-information "AD group [$returnGroupName] not found"
+             
+            if(!(Test-Path $fullPath)) {
+                Write-information "ProjectFolder [$fullPath] not found"
+     
+                $returnObject = @{groupName=$returnGroupName; folderPath=$fullPath}
+                break;
+            } else {
+                Write-information "ProjectFolder [$fullPath] found"
+            }
+        } else {
+            Write-information "AD group [$returnGroupName] found"
+        }
+    }
+     
+     
+    if(-not [string]::IsNullOrEmpty($returnObject)) {
+        Write-output $returnObject
+    }
+ 
+} catch {
+    Write-error "Error generating names for [$groupName]. Error: $($_.Exception.Message)"
+    return
+}
+'@ 
+$tmpModel = @'
+[{"key":"groupName","type":0},{"key":"folderPath","type":0}]
+'@ 
+$tmpInput = @'
+[{"description":null,"translateDescription":false,"inputFieldType":1,"key":"inputName","type":0,"options":1}]
+'@ 
+$dataSourceGuid_0 = [PSCustomObject]@{} 
+$dataSourceGuid_0_Name = @'
+NTFS-projectfolder-create-check-names
+'@ 
+Invoke-HelloIDDatasource -DatasourceName $dataSourceGuid_0_Name -DatasourceType "4" -DatasourceInput $tmpInput -DatasourcePsScript $tmpPsScript -DatasourceModel $tmpModel -returnObject ([Ref]$dataSourceGuid_0) 
+<# End: DataSource "NTFS-projectfolder-create-check-names" #>
 <# End: HelloID Data sources #>
 
 <# Begin: Dynamic Form "NTFS - Create Project Folder" #>
 $tmpSchema = @"
-[{"label":"Details","fields":[{"key":"name","templateOptions":{"label":"Project name","required":true,"minLength":6,"pattern":"^[A-Za-z0-9._-]{6,30}$","placeholder":""},"validation":{"messages":{"pattern":"Allowed Characters: a-z 0-9 . _ - \nMinimal 6, Maximal 30 characters"}},"type":"input","summaryVisibility":"Hide element","requiresTemplateOptions":true},{"key":"description","templateOptions":{"label":"Description"},"type":"input","summaryVisibility":"Show","requiresTemplateOptions":true}]},{"label":"Naming","fields":[{"key":"naming","templateOptions":{"label":"Available name","required":true,"grid":{"columns":[{"headerName":"GroupName","field":"groupName"},{"headerName":"FolderPath","field":"folderPath"}],"height":300,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_0","input":{"propertyInputs":[{"propertyName":"inputName","otherFieldValue":{"otherFieldKey":"name"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Show","requiresTemplateOptions":true}]}]
+[{"label":"Details","fields":[{"key":"name","templateOptions":{"label":"Project name","required":true,"minLength":6,"pattern":"^[A-Za-z0-9._-]{6,30}$","placeholder":""},"validation":{"messages":{"pattern":"Allowed Characters: a-z 0-9 . _ - \nMinimal 6, Maximal 30 characters"}},"type":"input","summaryVisibility":"Hide element","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":false},{"key":"description","templateOptions":{"label":"Description"},"type":"input","summaryVisibility":"Show","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":false}]},{"label":"Naming","fields":[{"key":"naming","templateOptions":{"label":"Available name","required":true,"grid":{"columns":[{"headerName":"GroupName","field":"groupName"},{"headerName":"FolderPath","field":"folderPath"}],"height":300,"rowSelection":"single"},"dataSourceConfig":{"dataSourceGuid":"$dataSourceGuid_0","input":{"propertyInputs":[{"propertyName":"inputName","otherFieldValue":{"otherFieldKey":"name"}}]}},"useFilter":false},"type":"grid","summaryVisibility":"Show","requiresTemplateOptions":true,"requiresKey":true,"requiresDataSource":true}]}]
 "@ 
 
 $dynamicFormGuid = [PSCustomObject]@{} 
@@ -323,19 +422,23 @@ Invoke-HelloIDDynamicForm -FormName $dynamicFormName -FormSchema $tmpSchema  -re
 
 <# Begin: Delegated Form Access Groups and Categories #>
 $delegatedFormAccessGroupGuids = @()
-foreach($group in $delegatedFormAccessGroupNames) {
-    try {
-        $uri = ($script:PortalBaseUrl +"api/v1/groups/$group")
-        $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
-        $delegatedFormAccessGroupGuid = $response.groupGuid
-        $delegatedFormAccessGroupGuids += $delegatedFormAccessGroupGuid
-        
-        Write-Information "HelloID (access)group '$group' successfully found$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormAccessGroupGuid })"
-    } catch {
-        Write-Error "HelloID (access)group '$group', message: $_"
+if(-not[String]::IsNullOrEmpty($delegatedFormAccessGroupNames)){
+    foreach($group in $delegatedFormAccessGroupNames) {
+        try {
+            $uri = ($script:PortalBaseUrl +"api/v1/groups/$group")
+            $response = Invoke-RestMethod -Method Get -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false
+            $delegatedFormAccessGroupGuid = $response.groupGuid
+            $delegatedFormAccessGroupGuids += $delegatedFormAccessGroupGuid
+            
+            Write-Information "HelloID (access)group '$group' successfully found$(if ($script:debugLogging -eq $true) { ": " + $delegatedFormAccessGroupGuid })"
+        } catch {
+            Write-Error "HelloID (access)group '$group', message: $_"
+        }
+    }
+    if($null -ne $delegatedFormAccessGroupGuids){
+        $delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Depth 100 -Compress)
     }
 }
-$delegatedFormAccessGroupGuids = ($delegatedFormAccessGroupGuids | Select-Object -Unique | ConvertTo-Json -Compress)
 
 $delegatedFormCategoryGuids = @()
 foreach($category in $delegatedFormCategories) {
@@ -351,7 +454,7 @@ foreach($category in $delegatedFormCategories) {
         $body = @{
             name = @{"en" = $category};
         }
-        $body = ConvertTo-Json -InputObject $body
+        $body = ConvertTo-Json -InputObject $body -Depth 100
 
         $uri = ($script:PortalBaseUrl +"api/v1/delegatedformcategories")
         $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $script:headers -ContentType "application/json" -Verbose:$false -Body $body
@@ -361,7 +464,7 @@ foreach($category in $delegatedFormCategories) {
         Write-Information "HelloID Delegated Form category '$category' successfully created$(if ($script:debugLogging -eq $true) { ": " + $tmpGuid })"
     }
 }
-$delegatedFormCategoryGuids = (ConvertTo-Json -InputObject $delegatedFormCategoryGuids -Compress)
+$delegatedFormCategoryGuids = (ConvertTo-Json -InputObject $delegatedFormCategoryGuids -Depth 100 -Compress)
 <# End: Delegated Form Access Groups and Categories #>
 
 <# Begin: Delegated Form #>
@@ -369,59 +472,10 @@ $delegatedFormRef = [PSCustomObject]@{guid = $null; created = $null}
 $delegatedFormName = @'
 NTFS - Create Project Folder
 '@
-Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-folder-open" -returnObject ([Ref]$delegatedFormRef) 
-<# End: Delegated Form #>
-
-<# Begin: Delegated Form Task #>
-if($delegatedFormRef.created -eq $true) { 
-	$tmpScript = @'
-try {
-    $projectFolder = New-Item -path $projectFolderPath -ItemType Directory -force -ea Stop
- 
-    Hid-Write-Status -Message "Succesfully created projectFolder [$projectFolderPath]" -Event Success
-    HID-Write-Summary -Message "Succesfully created projectFolder [$projectFolderPath]" -Event Success
- 
-    try {
-        $adGroup = New-ADGroup -Name $groupName -Description $groupDescription -GroupScope Global -GroupCategory Security -Path $createOU
- 
-        Hid-Write-Status -Message "Succesfully created AD group [$groupName]" -Event Success
-        Hid-Write-Summary -Message "Succesfully created AD group [$groupName]" -Event Success
-        try {
-            $acl = Get-Acl $projectFolderPath
-            $acl.SetAccessRuleProtection($False, $False)
- 
-            #add security group for this folder and all children
-            $newRule = New-Object System.Security.AccessControl.FileSystemAccessRule("$groupName","Modify", "ContainerInherit, ObjectInherit", "None", "Allow")
-            $acl.AddAccessRule($newRule)
- 
-            Set-Acl $projectFolderPath $acl
- 
-            Hid-Write-Status -Message "Succesfully updated projectFolder permissions" -Event Success
-            Hid-Write-Summary -Message "Succesfully updated projectFolder permissions" -Event Success
-        } catch {
-            Hid-Write-Status -Message "Error updating projectFolder permissions. Error: $($_.Exception.Message)" -Event Error
-            Hid-Write-Summary -Message "Could not update projectFolder permissions" -Event Failed
-        }
-    } catch {
-        Hid-Write-Status -Message "Error creating AD group [$groupName]. Error: $($_.Exception.Message)" -Event Error
-        Hid-Write-Summary -Message "Could not create AD group [$groupName]" -Event Failed
-    }
-} catch {
-    Hid-Write-Status -Message "Could not create projectFolder [$projectFolderPath]. Error: $($_.Exception.Message)" -Event Error
-    Hid-Write-Summary -Message "Error creating projectFolder [$projectFolderPath]" -Event Failed
-}
-'@; 
-
-	$tmpVariables = @'
-[{"name":"createOU","value":"{{variable.ProjectFolderCreateOU}}","secret":false,"typeConstraint":"string"},{"name":"groupDescription","value":"{{form.description}}","secret":false,"typeConstraint":"string"},{"name":"groupName","value":"{{form.naming.groupName}}","secret":false,"typeConstraint":"string"},{"name":"projectFolderPath","value":"{{form.naming.folderPath}}","secret":false,"typeConstraint":"string"}]
+$tmpTask = @'
+{"name":"NTFS - Create Project Folder","script":"$createOU = $projectFolderCreateOu\r\n$groupDescription = $form.description\r\n$groupName = $form.naming.groupName\r\n$projectFolderPath = $form.naming.folderPath\r\n\r\ntry {\r\n    $projectFolder = New-Item -path $projectFolderPath -ItemType Directory -force -ea Stop \r\n    \r\n    Write-Information \"Succesfully created projectFolder [$projectFolderPath]\"\r\n    $Log = @{\r\n        Action            = \"CreateResource\" # optional. ENUM (undefined = default) \r\n        System            = \"FileSystem\" # optional (free format text) \r\n        Message           = \"Succesfully created projectFolder [$projectFolderPath]\" # required (free format text) \r\n        IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n        TargetDisplayName = $projectFolderPath # optional (free format text) \r\n        TargetIdentifier  = \"\" # optional (free format text) \r\n    }\r\n    #send result back  \r\n    Write-Information -Tags \"Audit\" -MessageData $log\r\n     \r\n    try {\r\n        $adGroup = New-ADGroup -Name $groupName -Description $groupDescription -GroupScope Global -GroupCategory Security -Path $createOU\r\n \r\n        Write-Information \"Succesfully created AD group [$groupName]\"\r\n        $Log = @{\r\n            Action            = \"CreateResource\" # optional. ENUM (undefined = default) \r\n            System            = \"ActiveDirectory\" # optional (free format text) \r\n            Message           = \"Succesfully created AD group [$groupName]\" # required (free format text) \r\n            IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n            TargetDisplayName = $groupName # optional (free format text) \r\n            TargetIdentifier  = $createOU # optional (free format text) \r\n        }\r\n        #send result back  \r\n        Write-Information -Tags \"Audit\" -MessageData $log\r\n        \r\n        try {\r\n            $acl = Get-Acl $projectFolderPath\r\n            $acl.SetAccessRuleProtection($False, $False)\r\n \r\n            #add security group for this folder and all children\r\n            $newRule = New-Object System.Security.AccessControl.FileSystemAccessRule(\"$groupName\",\"Modify\", \"ContainerInherit, ObjectInherit\", \"None\", \"Allow\")\r\n            $acl.AddAccessRule($newRule)\r\n \r\n            Set-Acl $projectFolderPath $acl\r\n \r\n           Write-Information \"Succesfully updated projectFolder permissions\"\r\n           $Log = @{\r\n                Action            = \"UpdateResource\" # optional. ENUM (undefined = default) \r\n                System            = \"FileSystem\" # optional (free format text) \r\n                Message           = \"Succesfully updated projectFolder permissions\" # required (free format text) \r\n                IsError           = $false # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n                TargetDisplayName = $projectFolderPath # optional (free format text) \r\n                TargetIdentifier  = \"\u0027$groupName\u0027,\u0027Modify\u0027, \u0027ContainerInherit, ObjectInherit\u0027, \u0027None\u0027, \u0027Allow\u0027\" # optional (free format text) \r\n            }\r\n            #send result back  \r\n            Write-Information -Tags \"Audit\" -MessageData $log\r\n            \r\n        } catch {\r\n            Write-Error \"Error updating projectFolder permissions. Error: $($_.Exception.Message)\"\r\n            $Log = @{\r\n                Action            = \"UpdateResource\" # optional. ENUM (undefined = default) \r\n                System            = \"FileSystem\" # optional (free format text) \r\n                Message           = \"Could not update projectFolder permissions\" # required (free format text) \r\n                IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n                TargetDisplayName = $projectFolderPath # optional (free format text) \r\n                TargetIdentifier  = \"\u0027$groupName\u0027,\u0027Modify\u0027, \u0027ContainerInherit, ObjectInherit\u0027, \u0027None\u0027, \u0027Allow\u0027\" # optional (free format text) \r\n            }\r\n            #send result back  \r\n            Write-Information -Tags \"Audit\" -MessageData $log            \r\n        }\r\n    } catch {\r\n        Write-Error \"Error creating AD group [$groupName]. Error: $($_.Exception.Message)\"\r\n        $Log = @{\r\n            Action            = \"CreateResource\" # optional. ENUM (undefined = default) \r\n            System            = \"ActiveDirectory\" # optional (free format text) \r\n            Message           = \"Could not create AD group [$groupName]\" # required (free format text) \r\n            IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n            TargetDisplayName = $groupName # optional (free format text) \r\n            TargetIdentifier  = $createOU # optional (free format text) \r\n        }\r\n        #send result back  \r\n        Write-Information -Tags \"Audit\" -MessageData $log        \r\n    }\r\n} catch {\r\n    Write-Error \"Could not create projectFolder [$projectFolderPath]. Error: $($_.Exception.Message)\"\r\n    $Log = @{\r\n        Action            = \"CreateResource\" # optional. ENUM (undefined = default) \r\n        System            = \"FileSystem\" # optional (free format text) \r\n        Message           = \"Error creating projectFolder [$projectFolderPath]\" # required (free format text) \r\n        IsError           = $true # optional. Elastic reporting purposes only. (default = $false. $true = Executed action returned an error) \r\n        TargetDisplayName = $projectFolderPath # optional (free format text) \r\n        TargetIdentifier  = \"\" # optional (free format text) \r\n    }\r\n    #send result back  \r\n    Write-Information -Tags \"Audit\" -MessageData $log    \r\n}","runInCloud":false}
 '@ 
 
-	$delegatedFormTaskGuid = [PSCustomObject]@{} 
-$delegatedFormTaskName = @'
-NTFS-projectfolder-create
-'@
-	Invoke-HelloIDAutomationTask -TaskName $delegatedFormTaskName -UseTemplate "False" -AutomationContainer "8" -Variables $tmpVariables -PowershellScript $tmpScript -ObjectGuid $delegatedFormRef.guid -ForceCreateTask $true -returnObject ([Ref]$delegatedFormTaskGuid) 
-} else {
-	Write-Warning "Delegated form '$delegatedFormName' already exists. Nothing to do with the Delegated Form task..." 
-}
-<# End: Delegated Form Task #>
+Invoke-HelloIDDelegatedForm -DelegatedFormName $delegatedFormName -DynamicFormGuid $dynamicFormGuid -AccessGroups $delegatedFormAccessGroupGuids -Categories $delegatedFormCategoryGuids -UseFaIcon "True" -FaIcon "fa fa-folder-open" -task $tmpTask -returnObject ([Ref]$delegatedFormRef) 
+<# End: Delegated Form #>
+

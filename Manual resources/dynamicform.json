@@ -18,7 +18,9 @@
                                           },
                            "type":  "input",
                            "summaryVisibility":  "Hide element",
-                           "requiresTemplateOptions":  true
+                           "requiresTemplateOptions":  true,
+                           "requiresKey":  true,
+                           "requiresDataSource":  false
                        },
                        {
                            "key":  "description",
@@ -27,7 +29,9 @@
                                                },
                            "type":  "input",
                            "summaryVisibility":  "Show",
-                           "requiresTemplateOptions":  true
+                           "requiresTemplateOptions":  true,
+                           "requiresKey":  true,
+                           "requiresDataSource":  false
                        }
                    ]
     },
@@ -70,7 +74,9 @@
                                                },
                            "type":  "grid",
                            "summaryVisibility":  "Show",
-                           "requiresTemplateOptions":  true
+                           "requiresTemplateOptions":  true,
+                           "requiresKey":  true,
+                           "requiresDataSource":  true
                        }
                    ]
     }

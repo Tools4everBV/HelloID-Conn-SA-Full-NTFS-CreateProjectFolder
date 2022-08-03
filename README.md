@@ -8,6 +8,7 @@ This HelloID Service Automation Delegated Form provides NTFS project folder crea
 ## Versioning
 | Version | Description | Date |
 | - | - | - |
+| 1.0.2   | Added version number and updated code for SA-agent and auditlogging | 2022/08/03  |
 | 1.0.1   | Added version number and updated all-in-one script | 2021/12/13  |
 | 1.0.0   | Initial release | 2020/09/07  |
 
