@@ -46,7 +46,7 @@ This Delegated Form uses the following resources in order to run
 ### Powershell data source 'NTFS-projectfolder-create-check-names'
 This Powershell data source runs an Active Directory query and checks the filesystem for duplicate folder and security group name. The available names based on the configured naming convention are returned
 
-### Delegated form task 'NTFS-projectfolder-create'
+### Delegated form task 'NTFS - Create Project Folder'
 This delegated form task will create the project folder, Active Directory security group and set the access rights.
 
 ## Getting help
