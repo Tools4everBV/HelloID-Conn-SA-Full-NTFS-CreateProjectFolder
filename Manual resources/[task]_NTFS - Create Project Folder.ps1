@@ -38,7 +38,7 @@ try {
             $acl.SetAccessRuleProtection($False, $False)
  
             #add security group for this folder and all children
-            $newRule = New-Object System.Security.AccessControl.FileSystemAccessRule("$groupName","Modify", "ContainerInherit, ObjectInherit", "None", "Allow")
+            $newRule = [System.Security.AccessControl.FileSystemAccessRule]::new("$groupName","Modify", "ContainerInherit, ObjectInherit", "None", "Allow")
             $acl.AddAccessRule($newRule)
  
             Set-Acl $projectFolderPath $acl
